@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auditoria de Linhas, KM e Horas</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #182230;
+      --muted: #667085;
+      --line: #d8dee8;
+      --accent: #006c67;
+      --accent-2: #3257a8;
+      --warn: #9a5b00;
+      --bad: #b42318;
+      --ok: #147a3f;
+      --soft: #edf6f5;
+      --shadow: 0 10px 24px rgba(16, 24, 40, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    header {
+      background: #102a43;
+      color: #fff;
+      padding: 22px clamp(16px, 4vw, 40px);
+      border-bottom: 5px solid var(--accent);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(24px, 3vw, 38px);
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    header p {
+      margin: 0;
+      color: #d6e2f0;
+      font-size: 15px;
+    }
+
+    main {
+      width: min(1540px, calc(100% - 28px));
+      margin: 18px auto 40px;
+    }
+
+    .toolbar, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1.2fr) minmax(230px, .9fr) repeat(4, minmax(145px, .55fr)) auto;
+      gap: 10px;
+      padding: 14px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    input, select, button {
+      height: 38px;
+      border-radius: 6px;
+      border: 1px solid #b8c2d1;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      padding: 0 10px;
+    }
+
+    button {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 750;
+      cursor: pointer;
+      min-width: 118px;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+
+    .file-input {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 38px;
+      padding: 6px 10px;
+      border: 1px dashed #8aa4bd;
+      border-radius: 6px;
+      background: #f8fbfd;
+      color: var(--ink);
+      text-transform: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .file-input input {
+      width: 100%;
+      height: auto;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      min-height: 94px;
+    }
+
+    .kpi span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+
+    .kpi strong {
+      display: block;
+      margin-top: 9px;
+      font-size: clamp(22px, 2.5vw, 34px);
+      line-height: 1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(380px, .8fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 13px 14px;
+      font-size: 17px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 560px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 920px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #edf0f5;
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f7f9fc;
+      color: #344054;
+      font-size: 12px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    td.num, th.num { text-align: right; }
+
+    tr:hover td { background: #f8fbfb; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 750;
+      border: 1px solid transparent;
+    }
+
+    .badge.ok { color: var(--ok); background: #eaf7ef; border-color: #bee8ca; }
+    .badge.warn { color: var(--warn); background: #fff5db; border-color: #f7da96; }
+    .badge.bad { color: var(--bad); background: #ffebe9; border-color: #ffc7c2; }
+    .badge.info { color: var(--accent-2); background: #edf2ff; border-color: #cdd8ff; }
+
+    .alerts {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      max-height: 560px;
+      overflow: auto;
+    }
+
+    .alert {
+      border: 1px solid var(--line);
+      border-left-width: 5px;
+      border-radius: 7px;
+      background: #fff;
+      padding: 10px 11px;
+    }
+
+    .alert.bad { border-left-color: var(--bad); }
+    .alert.warn { border-left-color: var(--warn); }
+    .alert.info { border-left-color: var(--accent-2); }
+
+    .alert strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+
+    .alert p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .check-cell {
+      text-align: center;
+      width: 58px;
+    }
+
+    .check-cell input {
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .reduction-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .saving {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .saving span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+
+    .saving strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 20px;
+    }
+
+    .status {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .mini {
+      min-width: 520px;
+    }
+
+    @media (max-width: 1160px) {
+      .toolbar, .grid { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+      button { width: 100%; }
+    }
+
+    @media (max-width: 620px) {
+      main { width: calc(100% - 16px); }
+      .kpis { grid-template-columns: 1fr; }
+      header { padding: 18px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Auditoria de Linhas, KM e Horas</h1>
+    <p id="fonte">Importe o arquivo CSV para auditar linhas, km e horas</p>
+  </header>
+
+  <main>
+    <section class="toolbar" aria-label="Filtros">
+      <label>Busca
+        <input id="busca" type="search" placeholder="Linha, veículo, origem, destino, mensagem">
+      </label>
+      <label>Importar CSV
+        <span class="file-input"><input id="arquivoCsv" type="file" accept=".csv,text/csv"></span>
+      </label>
+      <label>Linha (coluna 3)
+        <select id="filtroLinha"></select>
+      </label>
+      <label>Evento
+        <select id="filtroEvento"></select>
+      </label>
+      <label>Bloco
+        <select id="filtroBloco"></select>
+      </label>
+      <label>Visão
+        <select id="visao">
+          <option value="linha">Por linha</option>
+          <option value="veiculo">Por veículo/bloco</option>
+          <option value="evento">Por evento</option>
+          <option value="registro">Registros</option>
+        </select>
+      </label>
+      <button id="recarregar" type="button">Recarregar</button>
+    </section>
+
+    <p class="status" id="status">Selecione um arquivo CSV para iniciar a auditoria.</p>
+
+    <section class="kpis">
+      <div class="kpi"><span>Registros</span><strong id="kpiRegistros">-</strong></div>
+      <div class="kpi"><span>KM total</span><strong id="kpiKm">-</strong></div>
+      <div class="kpi"><span>Horas total</span><strong id="kpiHoras">-</strong></div>
+      <div class="kpi"><span>Horas viagem</span><strong id="kpiViagem">-</strong></div>
+      <div class="kpi"><span>Horas desloc.</span><strong id="kpiDesloc">-</strong></div>
+      <div class="kpi"><span>KM desloc.</span><strong id="kpiAlertas">-</strong></div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2 id="tituloTabela">Resumo por linha (coluna 3)</h2>
+        <div class="table-wrap">
+          <table id="tabela"></table>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <h2>Economia simulada</h2>
+        <div class="alerts" id="alertas"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      rows: [],
+      filtered: [],
+      sort: { key: "chave", dir: 1 },
+      alerts: [],
+      disabledRecords: new Set()
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (ch === '"') {
+          if (quoted && next === '"') {
+            field += '"';
+            i++;
+          } else {
+            quoted = !quoted;
+          }
+        } else if (ch === "," && !quoted) {
+          row.push(field);
+          field = "";
+        } else if ((ch === "\n" || ch === "\r") && !quoted) {
+          if (ch === "\r" && next === "\n") i++;
+          row.push(field);
+          if (row.some(v => v.trim() !== "")) rows.push(row);
+          row = [];
+          field = "";
+        } else {
+          field += ch;
+        }
+      }
+      row.push(field);
+      if (row.some(v => v.trim() !== "")) rows.push(row);
+      const headers = rows.shift().map(h => normalizeHeader(h.trim()));
+      return rows.map((cols, index) => {
+        const item = { _n: index + 2 };
+        headers.forEach((h, i) => item[h] = (cols[i] || "").trim());
+        applyColumnFallbacks(item, cols);
+        normalize(item);
+        return item;
+      });
+    }
+
+    function applyColumnFallbacks(item, cols) {
+      // A linha operacional vem sempre da 3a coluna do CSV.
+      item.Bloco = (cols[0] || item.Bloco || "").trim();
+      item.Veiculo = (cols[1] || item.Veiculo || item["Veículo"] || item["Veículo"] || "").trim();
+      item["Veículo"] = item.Veiculo;
+      item.Linha = (cols[2] || item.Linha || "").trim();
+      item.Tripulantes = (cols[3] || item.Tripulantes || "").trim();
+      item.Evento = (cols[4] || item.Evento || "").trim();
+      item.Origem = (cols[5] || item.Origem || "").trim();
+      item.Destino = (cols[6] || item.Destino || "").trim();
+      item["Início"] = (cols[7] || item["Início"] || item["Início"] || "").trim();
+      item.Fim = (cols[8] || item.Fim || "").trim();
+      item.Tempo = (cols[9] || item.Tempo || "").trim();
+      item.Tipo = (cols[10] || item.Tipo || "").trim();
+      item.Sentido = (cols[11] || item.Sentido || "").trim();
+      item.Tecnologia = (cols[12] || item.Tecnologia || "").trim();
+      item.km = (cols[13] || item.km || "").trim();
+      item.Mensagem = (cols[14] || item.Mensagem || "").trim();
+    }
+
+    function normalizeHeader(header) {
+      const clean = String(header || "").trim();
+      const map = {
+        "Veículo": "Veículo",
+        "Veiculo": "Veículo",
+        "Início": "Início",
+        "Inicio": "Início"
+      };
+      return map[clean] || clean;
+    }
+
+    function normalize(item) {
+      item.Bloco = item.Bloco || "";
+      item.Veiculo = item["Veículo"] || item["Veículo"] || item.Veiculo || "";
+      item.Linha = item.Linha || "(sem linha)";
+      item.Evento = item.Evento || "(sem evento)";
+      item.Tecnologia = item.Tecnologia || "(sem tecnologia)";
+      item.kmNum = parseNumber(item.km);
+      item.tempoMin = parseDuration(item.Tempo);
+      item.inicioMin = parseClock(item["Início"] || item["Início"]);
+      item.fimMin = parseClock(item.Fim);
+      item.chaveVeiculo = [item.Bloco, item.Veiculo].join(" / ");
+      item.busca = Object.values(item).join(" ").toLowerCase();
+    }
+
+    function parseNumber(value) {
+      if (!value) return 0;
+      const n = Number(String(value).replace(/\./g, "").replace(",", "."));
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function parseDuration(value) {
+      const m = /^(\d{1,3}):([0-5]\d)$/.exec(value || "");
+      if (!m) return 0;
+      return Number(m[1]) * 60 + Number(m[2]);
+    }
+
+    function parseClock(value) {
+      const m = /^(\d{1,2}):([0-5]\d)$/.exec(value || "");
+      if (!m) return null;
+      return Number(m[1]) * 60 + Number(m[2]);
+    }
+
+    function minutesBetween(start, end) {
+      if (start === null || end === null) return null;
+      return end >= start ? end - start : end + 1440 - start;
+    }
+
+    function formatKm(n) {
+      return n.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    }
+
+    function formatHours(min) {
+      const sign = min < 0 ? "-" : "";
+      const abs = Math.abs(Math.round(min));
+      return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+    }
+
+    function pct(n, d) {
+      if (!d) return "0,0%";
+      return (n / d).toLocaleString("pt-BR", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+
+    function loadCsvText(text, source) {
+      state.rows = parseCsv(text);
+      state.disabledRecords = new Set();
+      if (!state.rows.length) throw new Error("CSV sem registros para carregar");
+      $("fonte").textContent = `${source} | ${state.rows.length.toLocaleString("pt-BR")} registros carregados`;
+      buildFilters();
+      applyFilters();
+    }
+
+    async function importCsvFile(file) {
+      if (!file) return;
+      $("status").textContent = `Importando ${file.name}...`;
+      const text = await file.text();
+      loadCsvText(text, `arquivo importado: ${file.name}`);
+      $("arquivoCsv").value = "";
+    }
+
+    function resetDashboard() {
+      state.rows = [];
+      state.filtered = [];
+      state.alerts = [];
+      state.disabledRecords = new Set();
+      $("fonte").textContent = "Importe o arquivo CSV para auditar linhas, km e horas";
+      $("status").textContent = "Selecione um arquivo CSV para iniciar a auditoria.";
+      ["filtroLinha", "filtroEvento", "filtroBloco"].forEach(id => $(id).innerHTML = '<option value="">Todos</option>');
+      $("kpiRegistros").textContent = "0";
+      $("kpiKm").textContent = "0,000";
+      $("kpiHoras").textContent = "00:00";
+      $("kpiViagem").textContent = "00:00";
+      $("kpiDesloc").textContent = "00:00";
+      $("kpiAlertas").textContent = "0,000";
+      $("tabela").innerHTML = "";
+      $("alertas").innerHTML = '<div class="alert info"><strong>Aguardando importação</strong><p>Importe um CSV e desmarque registros para simular redução.</p></div>';
+    }
+
+    async function loadData() {
+      resetDashboard();
+    }
+    function buildFilters() {
+      fillSelect("filtroLinha", state.rows.map(r => r.Linha));
+      fillSelect("filtroEvento", state.rows.map(r => r.Evento));
+      fillSelect("filtroBloco", state.rows.map(r => r.Bloco));
+    }
+
+    function fillSelect(id, values) {
+      const unique = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+      const current = $(id).value;
+      $(id).innerHTML = `<option value="">Todos</option>` + unique.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+      if (unique.includes(current)) $(id).value = current;
+    }
+
+    function applyFilters() {
+      const q = $("busca").value.trim().toLowerCase();
+      const linha = $("filtroLinha").value;
+      const evento = $("filtroEvento").value;
+      const bloco = $("filtroBloco").value;
+      state.filtered = state.rows.filter(r => {
+        return (!q || r.busca.includes(q)) &&
+          (!linha || r.Linha === linha) &&
+          (!evento || r.Evento === evento) &&
+          (!bloco || r.Bloco === bloco);
+      });
+      state.alerts = auditRows(state.filtered);
+      render();
+    }
+
+    function aggregate(rows, keyFn) {
+      const map = new Map();
+      for (const r of rows) {
+        const key = keyFn(r);
+        if (!map.has(key)) {
+          map.set(key, {
+            chave: key,
+            registros: 0,
+            km: 0,
+            tempo: 0,
+            viagem: 0,
+            deslocamento: 0,
+            estacionamento: 0,
+            viagens: 0,
+            mensagens: 0,
+            linhas: new Set(),
+            veiculos: new Set(),
+            tecnologias: new Set()
+          });
+        }
+        const g = map.get(key);
+        g.registros++;
+        g.km += r.kmNum;
+        g.tempo += r.tempoMin;
+        g.linhas.add(r.Linha);
+        g.veiculos.add(r.Veiculo);
+        g.tecnologias.add(r.Tecnologia);
+        if (r.Mensagem) g.mensagens++;
+        if (same(r.Evento, "Viagem")) {
+          g.viagem += r.tempoMin;
+          g.viagens++;
+        } else if (same(r.Evento, "Deslocamento")) {
+          g.deslocamento += r.tempoMin;
+        } else if (same(r.Evento, "Estacionamento")) {
+          g.estacionamento += r.tempoMin;
+        }
+      }
+      return [...map.values()];
+    }
+
+    function same(a, b) {
+      return String(a || "").toLowerCase() === b.toLowerCase();
+    }
+
+    function auditRows(rows) {
+      const alerts = [];
+      for (const r of rows) {
+        const real = minutesBetween(r.inicioMin, r.fimMin);
+        if (real !== null && Math.abs(real - r.tempoMin) > 1) {
+          alerts.push(alert("bad", "Tempo diferente do intervalo", `Linha ${r.Linha}, veículo ${r.Veiculo}, registro ${r._n}: ${r["Início"]}-${r.Fim} indica ${formatHours(real)}, mas Tempo está ${r.Tempo}.`));
+        }
+        if (!same(r.Evento, "Estacionamento") && !r.Tripulantes) {
+          alerts.push(alert("warn", "Tripulantes em branco", `Linha ${r.Linha}, veículo ${r.Veiculo}, registro ${r._n}.`));
+        }
+        if ((same(r.Evento, "Viagem") || same(r.Evento, "Deslocamento")) && !r.km) {
+          alerts.push(alert("bad", "KM ausente em operação", `Linha ${r.Linha}, evento ${r.Evento}, veículo ${r.Veiculo}, registro ${r._n}.`));
+        }
+        if (same(r.Evento, "Viagem") && (!r.Tipo || !r.Sentido)) {
+          alerts.push(alert("warn", "Viagem sem tipo ou sentido", `Linha ${r.Linha}, veículo ${r.Veiculo}, registro ${r._n}.`));
+        }
+        if (same(r.Evento, "Deslocamento") && r.tempoMin > 90) {
+          alerts.push(alert("warn", "Deslocamento longo", `Linha ${r.Linha}, veículo ${r.Veiculo}: ${formatHours(r.tempoMin)} entre ${r.Origem} e ${r.Destino}, registro ${r._n}.`));
+        }
+        if (same(r.Evento, "Estacionamento") && r.tempoMin >= 240) {
+          alerts.push(alert("info", "Estacionamento prolongado", `Veículo ${r.Veiculo}, bloco ${r.Bloco}: ${formatHours(r.tempoMin)} em ${r.Origem}, registro ${r._n}.`));
+        }
+      }
+
+      const byVehicle = new Map();
+      rows.forEach(r => {
+        const key = r.chaveVeiculo;
+        if (!byVehicle.has(key)) byVehicle.set(key, []);
+        byVehicle.get(key).push(r);
+      });
+      for (const [key, list] of byVehicle.entries()) {
+        const ordered = list
+          .filter(r => r.inicioMin !== null && r.fimMin !== null)
+          .sort((a, b) => a.inicioMin - b.inicioMin || a.fimMin - b.fimMin);
+        for (let i = 1; i < ordered.length; i++) {
+          const prev = ordered[i - 1];
+          const cur = ordered[i];
+          const prevEnd = prev.fimMin < prev.inicioMin ? prev.fimMin + 1440 : prev.fimMin;
+          const curStart = cur.inicioMin < prev.inicioMin ? cur.inicioMin + 1440 : cur.inicioMin;
+          const diff = curStart - prevEnd;
+          if (diff < 0) {
+            alerts.push(alert("bad", "Sobreposição de horário", `${key}: registro ${prev._n} termina ${prev.Fim} e registro ${cur._n} inicia ${cur["Início"]}.`));
+          } else if (diff > 15) {
+            alerts.push(alert("info", "Intervalo sem evento", `${key}: ${formatHours(diff)} entre registro ${prev._n} e ${cur._n}.`));
+          }
+        }
+      }
+
+      return alerts.slice(0, 250);
+    }
+
+    function alert(level, title, text) {
+      return { level, title, text };
+    }
+
+    function render() {
+      renderKpis();
+      renderMainTable();
+      renderSavings();
+      $("status").textContent = `${state.filtered.length.toLocaleString("pt-BR")} de ${state.rows.length.toLocaleString("pt-BR")} registros na seleção.`;
+    }
+
+    function renderKpis() {
+      const total = state.filtered.reduce((a, r) => {
+        a.km += r.kmNum;
+        a.tempo += r.tempoMin;
+        if (same(r.Evento, "Viagem")) a.viagem += r.tempoMin;
+        if (same(r.Evento, "Deslocamento")) {
+          a.desloc += r.tempoMin;
+          a.kmDesloc += r.kmNum;
+        }
+        return a;
+      }, { km: 0, tempo: 0, viagem: 0, desloc: 0, kmDesloc: 0 });
+      $("kpiRegistros").textContent = state.filtered.length.toLocaleString("pt-BR");
+      $("kpiKm").textContent = formatKm(total.km);
+      $("kpiHoras").textContent = formatHours(total.tempo);
+      $("kpiViagem").textContent = formatHours(total.viagem);
+      $("kpiDesloc").textContent = formatHours(total.desloc);
+      $("kpiAlertas").textContent = formatKm(total.kmDesloc);
+    }
+
+    function renderMainTable() {
+      const view = $("visao").value;
+      if (view === "registro") return renderRecords();
+      const keyFn = view === "veiculo" ? r => r.chaveVeiculo : view === "evento" ? r => r.Evento : r => r.Linha;
+      const rows = sortRows(aggregate(state.filtered, keyFn));
+      const title = view === "veiculo" ? "Resumo por veículo/bloco" : view === "evento" ? "Resumo por evento" : "Resumo por linha";
+      $("tituloTabela").textContent = title;
+      renderTable("tabela", rows, [
+        ["chave", title.replace("Resumo por ", ""), v => escapeHtml(v.chave)],
+        ["registros", "Reg.", v => num(v.registros)],
+        ["km", "KM", v => num(formatKm(v.km))],
+        ["tempo", "Horas", v => num(formatHours(v.tempo))],
+        ["viagem", "H. viagem", v => num(formatHours(v.viagem))],
+        ["deslocamento", "H. desloc.", v => num(formatHours(v.deslocamento))],
+        ["estacionamento", "H. estac.", v => num(formatHours(v.estacionamento))],
+        ["viagens", "Viagens", v => num(v.viagens)],
+        ["kmHora", "KM/h", v => num(formatKm(v.tempo ? v.km / (v.tempo / 60) : 0))]
+      ]);
+      if (view === "linha") enableLineSummaryClicks(rows);
+    }
+
+    function enableLineSummaryClicks(rows) {
+      $("tabela").querySelectorAll("tbody tr").forEach((tr, index) => {
+        const linha = rows[index]?.chave;
+        if (!linha) return;
+        tr.style.cursor = "pointer";
+        tr.title = "Clique para ver os registros desta linha";
+        tr.addEventListener("click", () => {
+          $("filtroLinha").value = linha;
+          $("visao").value = "registro";
+          applyFilters();
+        });
+      });
+    }
+
+    function renderRecords() {
+      const linha = $("filtroLinha").value;
+      $("tituloTabela").textContent = linha ? `Registros da linha ${linha}` : "Registros";
+      const rows = [...state.filtered].sort((a, b) => {
+        const ai = a.inicioMin ?? 99999;
+        const bi = b.inicioMin ?? 99999;
+        return ai - bi || (a.fimMin ?? 99999) - (b.fimMin ?? 99999) || String(a.Veiculo).localeCompare(String(b.Veiculo), "pt-BR", { numeric: true });
+      });
+      renderTable("tabela", rows, [
+        ["habilitado", "Usar", v => `<td class="check-cell"><input type="checkbox" class="record-toggle" data-record="${v._n}" ${state.disabledRecords.has(v._n) ? "" : "checked"} title="Desmarque para simular a retirada deste registro"></td>`],
+        ["Veiculo", "Veículo", v => escapeHtml(v.Veiculo)],
+        ["Linha", "Linha", v => escapeHtml(v.Linha)],
+        ["Evento", "Evento", v => escapeHtml(v.Evento)],
+        ["Origem", "Origem", v => escapeHtml(v.Origem)],
+        ["Destino", "Destino", v => escapeHtml(v.Destino)],
+        ["Início", "Início", v => escapeHtml(v["Início"])],
+        ["Fim", "Fim", v => escapeHtml(v.Fim)],
+        ["tempoMin", "Tempo", v => num(formatHours(v.tempoMin))],
+        ["kmNum", "KM", v => num(formatKm(v.kmNum))],
+        ["Sentido", "Sentido", v => escapeHtml(v.Sentido)],
+      ]);
+      $("tabela").querySelectorAll(".record-toggle").forEach(input => {
+        input.addEventListener("change", event => {
+          const id = Number(event.target.dataset.record);
+          if (event.target.checked) state.disabledRecords.delete(id);
+          else state.disabledRecords.add(id);
+          renderSavings();
+        });
+      });
+    }
+
+    function renderTechTable() {
+      const rows = sortRows(aggregate(state.filtered, r => r.Tecnologia));
+      renderTable("tabelaTecnologia", rows, [
+        ["chave", "Tecnologia", v => escapeHtml(v.chave)],
+        ["registros", "Registros", v => num(v.registros)],
+        ["km", "KM", v => num(formatKm(v.km))],
+        ["tempo", "Horas", v => num(formatHours(v.tempo))],
+        ["viagem", "% viagem", v => num(pct(v.viagem, v.tempo))],
+        ["deslocamento", "% desloc.", v => num(pct(v.deslocamento, v.tempo))],
+        ["estacionamento", "% estac.", v => num(pct(v.estacionamento, v.tempo))]
+      ]);
+    }
+
+    function renderTable(id, rows, columns) {
+      const table = $(id);
+      table.innerHTML = `
+        <thead><tr>${columns.map(([key, label]) => `<th class="${isNumericKey(key) ? "num" : ""}" data-key="${key}">${escapeHtml(label)}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(row => `<tr>${columns.map(([key,, fn]) => cell(fn(row), isNumericKey(key))).join("")}</tr>`).join("")}</tbody>
+      `;
+      table.querySelectorAll("th").forEach(th => th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        state.sort = state.sort.key === key ? { key, dir: state.sort.dir * -1 } : { key, dir: -1 };
+        renderMainTable();
+        }));
+    }
+
+    function reductionTotals(rows) {
+      return rows.reduce((a, r) => {
+        a.registros++;
+        a.km += r.kmNum;
+        a.tempo += r.tempoMin;
+        if (same(r.Evento, "Viagem")) {
+          a.viagem += r.tempoMin;
+          a.viagens++;
+        }
+        if (same(r.Evento, "Deslocamento")) {
+          a.desloc += r.tempoMin;
+          a.kmDesloc += r.kmNum;
+        }
+        return a;
+      }, { registros: 0, km: 0, tempo: 0, viagem: 0, desloc: 0, kmDesloc: 0, viagens: 0 });
+    }
+
+    function renderSavings() {
+      const box = $("alertas");
+      const disabled = state.filtered.filter(r => state.disabledRecords.has(r._n));
+      const total = reductionTotals(disabled);
+      if (!state.rows.length) {
+        box.innerHTML = '<div class="alert info"><strong>Aguardando importação</strong><p>Importe um CSV e desmarque registros para simular redução.</p></div>';
+        return;
+      }
+      if (!disabled.length) {
+        box.innerHTML = '<div class="alert info"><strong>Nenhum registro retirado</strong><p>Desmarque viagens ou deslocamentos na tabela para calcular a economia da seleção atual.</p></div>';
+        return;
+      }
+      box.innerHTML = `
+        <div class="reduction-list">
+          <div class="saving"><span>Registros</span><strong>${total.registros.toLocaleString("pt-BR")}</strong></div>
+          <div class="saving"><span>Viagens</span><strong>${total.viagens.toLocaleString("pt-BR")}</strong></div>
+          <div class="saving"><span>KM total</span><strong>${formatKm(total.km)}</strong></div>
+          <div class="saving"><span>Horas total</span><strong>${formatHours(total.tempo)}</strong></div>
+          <div class="saving"><span>Horas viagem</span><strong>${formatHours(total.viagem)}</strong></div>
+          <div class="saving"><span>Horas desloc.</span><strong>${formatHours(total.desloc)}</strong></div>
+          <div class="saving"><span>KM desloc.</span><strong>${formatKm(total.kmDesloc)}</strong></div>
+        </div>
+        <div class="alerts">
+          <div class="alert warn"><strong>Economia estimada</strong><p>Valores calculados apenas com os registros desmarcados na seleção atual.</p></div>
+        </div>
+      `;
+    }
+    function sortRows(rows) {
+      const { key, dir } = state.sort;
+      return rows.sort((a, b) => {
+        const av = a[key] instanceof Set ? a[key].size : a[key];
+        const bv = b[key] instanceof Set ? b[key].size : b[key];
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+        return String(av || "").localeCompare(String(bv || ""), "pt-BR", { numeric: true }) * dir;
+      });
+    }
+
+    function isNumericKey(key) {
+      return ["registros", "km", "tempo", "viagem", "deslocamento", "estacionamento", "viagens", "kmHora", "mensagens", "_n", "tempoMin", "kmNum"].includes(key);
+    }
+
+    function cell(value, numeric = false) {
+      const html = String(value ?? "");
+      if (html.trim().startsWith("<td")) return html;
+      return `<td class="${numeric ? "num" : ""}">${html}</td>`;
+    }
+
+    function num(value) {
+      return `<td class="num">${escapeHtml(String(value))}</td>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[ch]));
+    }
+
+    ["busca", "filtroEvento", "filtroBloco", "visao"].forEach(id => {
+      $(id).addEventListener("input", applyFilters);
+      $(id).addEventListener("change", applyFilters);
+    });
+    $("filtroLinha").addEventListener("change", () => {
+      const selectedLine = $("filtroLinha").value;
+      if (selectedLine) $("visao").value = "registro";
+      applyFilters();
+    });
+    $("recarregar").addEventListener("click", resetDashboard);
+    $("arquivoCsv").addEventListener("change", event => {
+      importCsvFile(event.target.files[0]).catch(err => {
+        $("status").textContent = "Não foi possível importar o CSV selecionado. Confira se o arquivo mantém as colunas esperadas.";
+        console.error(err);
+      });
+    });
+
+    resetDashboard();
+  </script>
+</body>
+</html>
