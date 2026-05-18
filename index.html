@@ -64,7 +64,7 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: minmax(240px, 1.2fr) minmax(230px, .9fr) repeat(4, minmax(145px, .55fr)) auto;
+      grid-template-columns: minmax(240px, 1.2fr) minmax(230px, .9fr) repeat(4, minmax(145px, .55fr)) auto auto;
       gap: 10px;
       padding: 14px;
       align-items: end;
@@ -102,6 +102,11 @@
     button.secondary {
       background: #fff;
       color: var(--accent);
+    }
+
+    button.report {
+      border-color: var(--accent-2);
+      background: var(--accent-2);
     }
 
     .file-input {
@@ -309,6 +314,12 @@
       font-size: 13px;
     }
 
+    .report-actions {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+    }
+
     .mini {
       min-width: 520px;
     }
@@ -343,10 +354,10 @@
       <label>Linha (coluna 3)
         <select id="filtroLinha"></select>
       </label>
-      <label>Evento
+      <label>Veículo
         <select id="filtroEvento"></select>
       </label>
-      <label>Bloco
+      <label>Tripulante
         <select id="filtroBloco"></select>
       </label>
       <label>Visão
@@ -358,6 +369,7 @@
         </select>
       </label>
       <button id="recarregar" type="button">Recarregar</button>
+      <button id="gerarPdf" class="report" type="button">Gerar PDF</button>
     </section>
 
     <p class="status" id="status">Selecione um arquivo CSV para iniciar a auditoria.</p>
@@ -560,8 +572,8 @@
     }
     function buildFilters() {
       fillSelect("filtroLinha", state.rows.map(r => r.Linha));
-      fillSelect("filtroEvento", state.rows.map(r => r.Evento));
-      fillSelect("filtroBloco", state.rows.map(r => r.Bloco));
+      fillSelect("filtroEvento", state.rows.map(r => r.Veiculo));
+      fillSelect("filtroBloco", state.rows.map(r => r.Tripulantes));
     }
 
     function fillSelect(id, values) {
@@ -574,13 +586,13 @@
     function applyFilters() {
       const q = $("busca").value.trim().toLowerCase();
       const linha = $("filtroLinha").value;
-      const evento = $("filtroEvento").value;
-      const bloco = $("filtroBloco").value;
+      const veiculo = $("filtroEvento").value;
+      const tripulante = $("filtroBloco").value;
       state.filtered = state.rows.filter(r => {
         return (!q || r.busca.includes(q)) &&
           (!linha || r.Linha === linha) &&
-          (!evento || r.Evento === evento) &&
-          (!bloco || r.Bloco === bloco);
+          (!veiculo || r.Veiculo === veiculo) &&
+          (!tripulante || r.Tripulantes === tripulante);
       });
       state.alerts = auditRows(state.filtered);
       render();
@@ -598,6 +610,7 @@
             tempo: 0,
             viagem: 0,
             deslocamento: 0,
+            kmDesloc: 0,
             estacionamento: 0,
             viagens: 0,
             mensagens: 0,
@@ -619,6 +632,7 @@
           g.viagens++;
         } else if (same(r.Evento, "Deslocamento")) {
           g.deslocamento += r.tempoMin;
+          g.kmDesloc += r.kmNum;
         } else if (same(r.Evento, "Estacionamento")) {
           g.estacionamento += r.tempoMin;
         }
@@ -725,6 +739,7 @@
         ["tempo", "Horas", v => num(formatHours(v.tempo))],
         ["viagem", "H. viagem", v => num(formatHours(v.viagem))],
         ["deslocamento", "H. desloc.", v => num(formatHours(v.deslocamento))],
+        ["kmDesloc", "KM desloc.", v => num(formatKm(v.kmDesloc))],
         ["estacionamento", "H. estac.", v => num(formatHours(v.estacionamento))],
         ["viagens", "Viagens", v => num(v.viagens)],
         ["kmHora", "KM/h", v => num(formatKm(v.tempo ? v.km / (v.tempo / 60) : 0))]
@@ -847,6 +862,441 @@
         </div>
       `;
     }
+
+    function generatePdfReport() {
+      if (!state.rows.length) {
+        window.alert("Importe um CSV antes de gerar o PDF.");
+        return;
+      }
+      if (!state.filtered.length) {
+        window.alert("A selecao atual nao possui registros para gerar o PDF.");
+        return;
+      }
+
+      const disabled = state.filtered.filter(r => state.disabledRecords.has(r._n));
+      const enabled = state.filtered.filter(r => !state.disabledRecords.has(r._n));
+      const before = reductionTotals(state.filtered);
+      const after = reductionTotals(enabled);
+      const saving = diffTotals(before, after);
+      const reportWindow = window.open("", "_blank");
+      if (!reportWindow) {
+        window.alert("Nao foi possivel abrir a janela do PDF. Verifique se o navegador bloqueou pop-ups.");
+        return;
+      }
+
+      reportWindow.document.open();
+      reportWindow.document.write(buildReportHtml({
+        before,
+        after,
+        saving,
+        disabled,
+        enabled,
+        filters: currentFiltersLabel(),
+        generatedAt: new Date().toLocaleString("pt-BR")
+      }));
+      reportWindow.document.close();
+      reportWindow.focus();
+      let printed = false;
+      const printReport = () => {
+        if (printed) return;
+        printed = true;
+        reportWindow.print();
+      };
+      reportWindow.addEventListener("load", printReport, { once: true });
+      setTimeout(printReport, 300);
+    }
+
+    function diffTotals(before, after) {
+      return {
+        registros: before.registros - after.registros,
+        km: before.km - after.km,
+        tempo: before.tempo - after.tempo,
+        viagem: before.viagem - after.viagem,
+        desloc: before.desloc - after.desloc,
+        kmDesloc: before.kmDesloc - after.kmDesloc,
+        viagens: before.viagens - after.viagens
+      };
+    }
+
+    function currentFiltersLabel() {
+      const parts = [];
+      const q = $("busca").value.trim();
+      const linha = $("filtroLinha").value;
+      const veiculo = $("filtroEvento").value;
+      const tripulante = $("filtroBloco").value;
+      if (q) parts.push(`Busca: ${q}`);
+      if (linha) parts.push(`Linha: ${linha}`);
+      if (veiculo) parts.push(`Veículo: ${veiculo}`);
+      if (tripulante) parts.push(`Tripulante: ${tripulante}`);
+      return parts.length ? parts.join(" | ") : "Todos os registros importados";
+    }
+
+    function shouldUseSummaryPdf() {
+      return !$("busca").value.trim() &&
+        !$("filtroLinha").value &&
+        !$("filtroEvento").value &&
+        !$("filtroBloco").value &&
+        $("visao").value === "linha";
+    }
+
+    function buildReportHtml(data) {
+      const summarized = shouldUseSummaryPdf();
+      const beforeRowsHtml = data.before.registros
+        ? summarized ? reportSummaryTable(aggregate(state.filtered, r => r.Linha)) : reportRowsTable(state.filtered, "Considerado no cenário original")
+        : '<div class="empty">Nenhum registro encontrado na seleção filtrada.</div>';
+      const afterRowsHtml = data.enabled.length
+        ? summarized ? reportSummaryTable(aggregate(data.enabled, r => r.Linha)) : reportRowsTable(data.enabled, "Mantido após a redução")
+        : '<div class="empty">Todos os registros filtrados foram retirados da simulação.</div>';
+      const removedRowsHtml = data.disabled.length
+        ? summarized ? reportSummaryTable(aggregate(data.disabled, r => r.Linha)) : reportRowsTable(data.disabled, "Retirado da simulação")
+        : '<div class="empty">Nenhum registro foi desmarcado na seleção filtrada.</div>';
+      const economyText = reportEconomyExplanation(data);
+
+      return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Relatório de economia</title>
+  <style>
+    * { box-sizing: border-box; }
+    @page { size: A4 portrait; margin: 7mm; }
+    html {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #182230;
+      background: #eef2f6;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    .page {
+      width: 100%;
+      min-height: 100vh;
+      padding: 12px;
+      background: #fff;
+    }
+    .hero {
+      break-after: avoid;
+      page-break-after: avoid;
+      margin-bottom: 8px;
+      padding: 10px 12px;
+      color: #fff;
+      background: #102a43;
+      border-radius: 10px;
+      border-left: 8px solid #006c67;
+    }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    h2 {
+      break-after: avoid;
+      margin: 16px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #d8dee8;
+      font-size: 15px;
+    }
+    h3 { font-size: 14px; margin-bottom: 9px; }
+    .meta { color: #d6e2f0; font-size: 10px; margin-bottom: 0; line-height: 1.3; }
+    .hero-note {
+      margin-top: 7px;
+      padding: 8px 10px;
+      color: #102a43;
+      background: #e7f5f3;
+      border: 1px solid #9dd2cc;
+      border-radius: 7px;
+      font-size: 10px;
+      line-height: 1.3;
+    }
+    .summary, .compare {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .card {
+      break-inside: avoid;
+      background: #fff;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+    .card.before { border-top: 5px solid #3257a8; }
+    .card.after { border-top: 5px solid #147a3f; }
+    .card.saving { border-top: 5px solid #006c67; background: #f3fbfa; }
+    .metric span, .field span {
+      display: block;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .mini-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-bottom: 0;
+    }
+    .mini-card {
+      break-inside: avoid;
+      padding: 7px;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .mini-card.before { border-left: 5px solid #3257a8; background: #f3f6ff; }
+    .mini-card.after { border-left: 5px solid #147a3f; background: #f1fbf5; }
+    .mini-card.saving { border-left: 5px solid #006c67; background: #effaf8; }
+    .mini-card strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+    }
+    .mini-card span {
+      color: #667085;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .explain {
+      break-inside: avoid;
+      margin: 10px 0;
+      padding: 10px 12px;
+      border: 1px solid #b7dcd8;
+      border-left: 6px solid #006c67;
+      border-radius: 8px;
+      background: #f3fbfa;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+      font-size: 8px;
+      line-height: 1.25;
+      margin-bottom: 0;
+      break-inside: auto;
+    }
+    .report-table th {
+      color: #fff;
+      background: #102a43;
+      border: 1px solid #102a43;
+      padding: 4px 3px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .report-table td {
+      border: 1px solid #d8dee8;
+      padding: 3px;
+      vertical-align: top;
+      text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .report-table th:nth-child(1), .report-table td:nth-child(1) { white-space: nowrap; }
+    .report-table th:nth-child(3), .report-table td:nth-child(3) { white-space: nowrap; }
+    .report-table th:nth-child(6), .report-table td:nth-child(6),
+    .report-table th:nth-child(7), .report-table td:nth-child(7),
+    .report-table th:nth-child(8), .report-table td:nth-child(8),
+    .report-table th:nth-child(9), .report-table td:nth-child(9) { white-space: nowrap; }
+    .report-table tbody tr:nth-child(even) td { background: #f8fafc; }
+    .report-table .num { text-align: center; }
+    .table-card {
+      display: grid;
+      grid-template-columns: 145px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 8px;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      background: #fff;
+      margin-bottom: 10px;
+    }
+    .table-card:first-of-type {
+      break-before: avoid;
+      page-break-before: avoid;
+    }
+    .table-card.before {
+      break-before: avoid;
+      page-break-before: avoid;
+      border-top: 5px solid #3257a8;
+    }
+    .table-card.after {
+      break-before: page;
+      page-break-before: always;
+      border-top: 5px solid #147a3f;
+    }
+    .table-card.saving {
+      break-before: page;
+      page-break-before: always;
+      border-top: 5px solid #006c67;
+    }
+    .table-card h2 {
+      grid-column: 1 / -1;
+      margin-top: 0;
+    }
+    .table-card .table-wrap-report {
+      min-width: 0;
+      overflow: hidden;
+    }
+    .empty {
+      padding: 12px;
+      border: 1px dashed #b8c2d1;
+      border-radius: 8px;
+      color: #667085;
+      background: #fff;
+    }
+    .after-summary { margin-top: 8px; }
+    @media print {
+      body { background: #fff; }
+      .page { padding: 0; }
+      .card { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>Relatório de economia com redução de registros</h1>
+        <p class="meta">Gerado em ${escapeHtml(data.generatedAt)}<br>Filtros aplicados: ${escapeHtml(data.filters)}</p>
+      </div>
+      <div class="hero-note">${economyText}</div>
+    </section>
+
+    <section class="table-card before">
+      <h2>Antes</h2>
+      ${reportMiniCards(data.before, "before")}
+      <div class="table-wrap-report">${beforeRowsHtml}</div>
+    </section>
+
+    <section class="table-card after">
+      <h2>Depois</h2>
+      ${reportMiniCards(data.after, "after")}
+      <div class="table-wrap-report">${afterRowsHtml}</div>
+    </section>
+
+    <section class="table-card saving">
+      <h2>Retirados</h2>
+      ${reportMiniCards(data.saving, "saving")}
+      <div class="table-wrap-report">${removedRowsHtml}</div>
+    </section>
+  </main>
+</body>
+</html>`;
+    }
+
+    function reportTotalsCard(title, total, variant = "") {
+      return `<section class="card ${escapeHtml(variant)}">
+        <h3>${escapeHtml(title)}</h3>
+        <div class="metrics">
+          ${reportMetric("Registros", total.registros.toLocaleString("pt-BR"))}
+          ${reportMetric("Viagens", total.viagens.toLocaleString("pt-BR"))}
+          ${reportMetric("KM total", formatKm(total.km))}
+          ${reportMetric("Horas", formatHours(total.tempo))}
+          ${reportMetric("H. viagem", formatHours(total.viagem))}
+          ${reportMetric("H. desloc.", formatHours(total.desloc))}
+          ${reportMetric("KM desloc.", formatKm(total.kmDesloc))}
+        </div>
+      </section>`;
+    }
+
+    function reportMetric(label, value) {
+      return `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+    }
+
+    function reportMiniCards(total, variant = "") {
+      return `<section class="mini-cards">
+        ${reportMiniCard("Registros", total.registros.toLocaleString("pt-BR"), variant)}
+        ${reportMiniCard("Viagens", total.viagens.toLocaleString("pt-BR"), variant)}
+        ${reportMiniCard("KM total", formatKm(total.km), variant)}
+        ${reportMiniCard("Horas total", formatHours(total.tempo), variant)}
+        ${reportMiniCard("Horas viagem", formatHours(total.viagem), variant)}
+        ${reportMiniCard("Horas desloc.", formatHours(total.desloc), variant)}
+        ${reportMiniCard("KM desloc.", formatKm(total.kmDesloc), variant)}
+      </section>`;
+    }
+
+    function reportMiniCard(label, value, variant = "") {
+      return `<div class="mini-card ${escapeHtml(variant)}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+    }
+
+    function reportRowsTable(rows, statusLabel) {
+      const headers = ["Linha", "Trip.", "Evento", "Origem", "Destino", "Iníc.", "Fim", "Tempo", "KM"];
+      return `<table class="report-table">
+        <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(r => reportRow(r)).join("")}</tbody>
+      </table>`;
+    }
+
+    function reportSummaryTable(groups) {
+      const headers = ["Linha", "Reg.", "Viag.", "KM", "Horas", "H. Viag.", "H. Desloc.", "KM Desloc."];
+      const rows = [...groups].sort((a, b) => String(a.chave || "").localeCompare(String(b.chave || ""), "pt-BR", { numeric: true }));
+      return `<table class="report-table">
+        <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(r => reportSummaryRow(r)).join("")}</tbody>
+      </table>`;
+    }
+
+    function reportSummaryRow(row) {
+      const values = [
+        row.chave,
+        row.registros.toLocaleString("pt-BR"),
+        row.viagens.toLocaleString("pt-BR"),
+        formatKm(row.km),
+        formatHours(row.tempo),
+        formatHours(row.viagem),
+        formatHours(row.deslocamento),
+        formatKm(row.kmDesloc || 0)
+      ];
+      return `<tr>${values.map((value, index) => `<td class="${index ? "num" : ""}">${escapeHtml(emptyDash(value))}</td>`).join("")}</tr>`;
+    }
+
+    function reportRow(row) {
+      const values = [
+        row.Linha,
+        row.Tripulantes,
+        reportEventName(row.Evento),
+        row.Origem,
+        row.Destino,
+        row["InÃ­cio"],
+        row.Fim,
+        formatHours(row.tempoMin),
+        formatKm(row.kmNum)
+      ];
+      return `<tr>${values.map((value, index) => `<td class="${index === 8 ? "num" : ""}">${escapeHtml(emptyDash(value))}</td>`).join("")}</tr>`;
+    }
+
+    function reportEventName(value) {
+      const text = String(value || "");
+      return text.toLowerCase().includes("deslocamento") ? "Desloc" : text;
+    }
+
+    function reportEconomyExplanation(data) {
+      if (!data.saving.registros) {
+        return "Não há economia simulada porque nenhum registro foi retirado. Para demonstrar a redução, desmarque os registros desejados na tabela e gere o PDF novamente.";
+      }
+      const percentKm = data.before.km ? pct(data.saving.km, data.before.km) : "0,0%";
+      const percentHours = data.before.tempo ? pct(data.saving.tempo, data.before.tempo) : "0,0%";
+      return `A redução considera os registros desmarcados na seleção atual. Com a retirada de ${data.saving.registros.toLocaleString("pt-BR")} registro(s), a operação passa de ${formatKm(data.before.km)} km para ${formatKm(data.after.km)} km, gerando economia estimada de ${formatKm(data.saving.km)} km (${percentKm}). Em horas, o total passa de ${formatHours(data.before.tempo)} para ${formatHours(data.after.tempo)}, uma redução de ${formatHours(data.saving.tempo)} (${percentHours}).`;
+    }
+
+    function emptyDash(value) {
+      return value === undefined || value === null || value === "" ? "-" : String(value);
+    }
+
     function sortRows(rows) {
       const { key, dir } = state.sort;
       return rows.sort((a, b) => {
@@ -858,7 +1308,7 @@
     }
 
     function isNumericKey(key) {
-      return ["registros", "km", "tempo", "viagem", "deslocamento", "estacionamento", "viagens", "kmHora", "mensagens", "_n", "tempoMin", "kmNum"].includes(key);
+      return ["registros", "km", "tempo", "viagem", "deslocamento", "kmDesloc", "estacionamento", "viagens", "kmHora", "mensagens", "_n", "tempoMin", "kmNum"].includes(key);
     }
 
     function cell(value, numeric = false) {
@@ -891,6 +1341,7 @@
       applyFilters();
     });
     $("recarregar").addEventListener("click", resetDashboard);
+    $("gerarPdf").addEventListener("click", generatePdfReport);
     $("arquivoCsv").addEventListener("change", event => {
       importCsvFile(event.target.files[0]).catch(err => {
         $("status").textContent = "Não foi possível importar o CSV selecionado. Confira se o arquivo mantém as colunas esperadas.";
